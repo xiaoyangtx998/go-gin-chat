@@ -106,18 +106,44 @@ function WebSocketConnect(userInfo,toUserInfo = null) {
 						'</span></li>');
 					break;
 				case 3:
-					if ( received_msg.data.uid != userInfo.uid && !isPrivateChat())
-					{
-						chat_info.html(chat_info.html() +
-							'<li class="left"><img src="/static/images/user/' +
-							received_msg.data.avatar_id +
-							'.png" alt=""><b>' +
-							received_msg.data.username +
-							'</b><i>' +
-							time +
-							'</i><div class="aaa">' +
-							received_msg.data.content +
-							'</div></li>');
+					if (!isPrivateChat()) {
+						if (received_msg.data.uid != userInfo.uid) {
+							chat_info.html(chat_info.html() +
+								'<li class="left" data-msg-id="' + received_msg.data.msg_id + '"><img src="/static/images/user/' +
+								received_msg.data.avatar_id +
+								'.png" alt=""><b>' +
+								received_msg.data.username +
+								'</b><i>' +
+								time +
+								'</i><div class="msg-content">' +
+								received_msg.data.content +
+								'</div></li>');
+						} else {
+							let nowTime = Date.now();
+							chat_info.html(chat_info.html() +
+								'<li class="right" data-msg-id="' + received_msg.data.msg_id + '" data-send-time="' + nowTime + '"><img src="/static/images/user/' +
+								received_msg.data.avatar_id +
+								'.png" alt=""><b>' +
+								received_msg.data.username +
+								'</b><i>' +
+								time +
+								'</i><div class="msg-content">' +
+								received_msg.data.content +
+								'</div><div class="msg-actions"><a class="btn-recall" href="javascript:;">撤回</a></div></li>');
+						}
+					}
+					break;
+				case 6:
+					if (received_msg.data.is_recalled) {
+						let msgLi = $('.main .chat_info li[data-msg-id="' + received_msg.data.msg_id + '"]');
+						if (msgLi.length > 0) {
+							msgLi.find('.msg-content').html('');
+							msgLi.find('.msg-actions').remove();
+							msgLi.addClass('recalled');
+							msgLi.find('.msg-content').html('<span class="recall-text">消息已撤回</span>');
+						}
+					} else {
+						layer.msg(received_msg.data.content);
 					}
 					break;
 				case -1:
@@ -332,8 +358,6 @@ $(document).ready(function(){
 				status = 5
 			}
 
-			sends_message($('.room').attr('data-username'), $('.room').attr('data-avatar_id'), str); // sends_message(昵称,头像id,聊天内容);
-
 			let send_data = JSON.stringify({
 				"status": status,
 				"data": {
@@ -386,9 +410,6 @@ $(document).ready(function(){
 				status = 5
 			}
 
-
-			sends_message($('.room').attr('data-username'), $('.room').attr('data-avatar_id'), str); // sends_message(昵称,头像id,聊天内容);
-
 			let send_data = JSON.stringify({
 				"status": status,
 				"data": {
@@ -403,9 +424,6 @@ $(document).ready(function(){
 			})
 
 			ws.send(send_data);
-
-			// 滚动条滚到最下面
-			toLow();
 
 		}
 
@@ -492,12 +510,15 @@ $(document).ready(function(){
 	$('.imgFileico').click(function(event) {
 		$('.imgFileBtn').click();
 	});
-	function sends_message (userName, userPortrait, message) {
+	function sends_message (userName, userPortrait, message, msgId) {
 		if(message!='') {
 
 			let myDate = new Date();
 			let time = myDate.toLocaleDateString() + myDate.toLocaleTimeString()
-			$('.main .chat_info').html($('.main .chat_info').html() + '<li class="right"><img src="/static/images/user/' + userPortrait + '.png" alt=""><b>' + userName + '</b><i>'+ time +'</i><div class="">' + message  +'</div></li>');
+			let msgIdAttr = msgId ? 'data-msg-id="' + msgId + '"' : '';
+			let nowTime = Date.now();
+			let timeAttr = 'data-send-time="' + nowTime + '"';
+			$('.main .chat_info').html($('.main .chat_info').html() + '<li class="right" ' + msgIdAttr + ' ' + timeAttr + '><img src="/static/images/user/' + userPortrait + '.png" alt=""><b>' + userName + '</b><i>'+ time +'</i><div class="msg-content">' + message  +'</div><div class="msg-actions"><a class="btn-recall" href="javascript:;">撤回</a></div></li>');
 		}
 	}
 	$('.text input').keypress(function(e) {
@@ -540,5 +561,49 @@ function toLow() {
 		scrollTop: $('.scrollbar-macosx.scroll-content.scroll-scrolly_visible').prop('scrollHeight')
 	}, 500);
 }
+
+$(document).on('click', '.btn-recall', function(e) {
+	e.preventDefault();
+	let li = $(this).closest('li');
+	let msgId = li.attr('data-msg-id');
+	let sendTime = li.attr('data-send-time');
+	
+	if (!msgId) {
+		layer.msg('消息ID不存在');
+		return;
+	}
+	
+	let nowTime = Date.now();
+	let timeDiff = nowTime - parseInt(sendTime);
+	if (timeDiff > 2 * 60 * 1000) {
+		layer.msg('超过2分钟无法撤回');
+		li.find('.msg-actions').remove();
+		return;
+	}
+	
+	let send_data = JSON.stringify({
+		"status": 6,
+		"data": {
+			"uid": $('.room').attr('data-uid').toString(),
+			"username": $('.room').attr('data-username'),
+			"avatar_id": $('.room').attr('data-avatar_id'),
+			"room_id": $('.room').attr('data-room_id'),
+			"msg_id": parseInt(msgId)
+		}
+	})
+	
+	ws.send(send_data);
+});
+
+setInterval(function() {
+	$('.main .chat_info li.right[data-send-time]').each(function() {
+		let sendTime = $(this).attr('data-send-time');
+		let nowTime = Date.now();
+		let timeDiff = nowTime - parseInt(sendTime);
+		if (timeDiff > 2 * 60 * 1000) {
+			$(this).find('.msg-actions').remove();
+		}
+	});
+}, 1000);
 
 

@@ -391,4 +391,33 @@ ul{
 	color: #afa;
 }
 
+.msg-actions {
+	display: inline-block;
+	margin-right: 60px;
+	margin-top: 5px;
+}
+
+.btn-recall {
+	color: #58f;
+	font-size: 12px;
+	padding: 2px 8px;
+	background-color: rgba(255, 255, 255, 0.8);
+	border-radius: 3px;
+}
+
+.btn-recall:hover {
+	color: #36f;
+	background-color: rgba(255, 255, 255, 1);
+}
+
+.recall-text {
+	color: #999;
+	font-style: italic;
+	font-size: 13px;
+}
+
+.recalled .msg-content {
+	background-color: #f5f5f5 !important;
+}
+
 

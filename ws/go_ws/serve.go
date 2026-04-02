@@ -43,6 +43,8 @@ type msgData struct {
 	Count    int           `json:"count"`
 	List     []interface{} `json:"list"`
 	Time     int64         `json:"time"`
+	MsgId    uint          `json:"msg_id"`
+	IsRecalled bool         `json:"is_recalled"`
 }
 
 // client & serve 的消息体
@@ -89,6 +91,7 @@ const msgTypeOffline = 2       // 离线
 const msgTypeSend = 3          // 消息发送
 const msgTypeGetOnlineUser = 4 // 获取用户列表
 const msgTypePrivateChat = 5   // 私聊
+const msgTypeRecall = 6        // 消息撤回
 
 const roomCount = 6 // 房间总数
 
@@ -275,6 +278,8 @@ func write(done <-chan struct{}) {
 					toC.(wsClients).Conn.WriteMessage(websocket.TextMessage, serveMsgStr)
 				}
 				<-chNotify
+			case msgTypeRecall:
+				notify(cl.Conn, string(serveMsgStr))
 			}
 		case o := <-offline:
 			disconnect(o)
@@ -355,9 +360,7 @@ func notify(conn *websocket.Conn, msg string) {
 	roomIdInt, _ := strconv.Atoi(roomId)
 	assignRoom := rooms[roomIdInt]
 	for _, con := range assignRoom {
-		if con.(wsClients).RemoteAddr != conn.RemoteAddr().String() {
-			con.(wsClients).Conn.WriteMessage(websocket.TextMessage, []byte(msg))
-		}
+		con.(wsClients).Conn.WriteMessage(websocket.TextMessage, []byte(msg))
 	}
 	<-chNotify
 }
@@ -427,6 +430,7 @@ func formatServeMsgStr(status int, conn *websocket.Conn) ([]byte, msg) {
 	content := clientMsg.Data.Content
 	toUidStr := clientMsg.Data.ToUid
 	imageUrl := clientMsg.Data.ImageUrl
+	msgId := clientMsg.Data.MsgId
 	clientMsgLock.Unlock()
 
 	roomIdInt, _ := strconv.Atoi(roomId)
@@ -454,9 +458,10 @@ func formatServeMsgStr(status int, conn *websocket.Conn) ([]byte, msg) {
 		// 保存消息
 		intUid, _ := strconv.Atoi(uid)
 
+		var savedMsg models.Message
 		if imageUrl != "" {
 			// 存在图片
-			models.SaveContent(map[string]interface{}{
+			savedMsg = models.SaveContent(map[string]interface{}{
 				"user_id":    intUid,
 				"to_user_id": toUid,
 				"content":    data.Content,
@@ -464,14 +469,24 @@ func formatServeMsgStr(status int, conn *websocket.Conn) ([]byte, msg) {
 				"image_url":  imageUrl,
 			})
 		} else {
-			models.SaveContent(map[string]interface{}{
+			savedMsg = models.SaveContent(map[string]interface{}{
 				"user_id":    intUid,
 				"to_user_id": toUid,
 				"content":    data.Content,
 				"room_id":    data.RoomId,
 			})
 		}
+		data.MsgId = savedMsg.ID
+	}
 
+	if status == msgTypeRecall {
+		intUid, _ := strconv.Atoi(uid)
+		success, message := models.RecallMessage(msgId, intUid)
+		data.MsgId = msgId
+		data.Content = message
+		if success {
+			data.IsRecalled = true
+		}
 	}
 
 	if status == msgTypeGetOnlineUser {
